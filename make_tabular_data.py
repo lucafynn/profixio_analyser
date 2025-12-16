@@ -2,8 +2,16 @@ import pdfplumber
 import pandas as pd
 import re
 import os
-import camelot
+import camelot, tabula
 import numpy as np
+from pathlib import Path
+
+def assert_correct_table_structure(df: pd.DataFrame):
+    #TODO: implement
+    pass
+
+def save_df_to_csv(df: pd.DataFrame, output_path: str):
+    df.to_csv(output_path, index=False)
 
 def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -18,44 +26,60 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
     # Drop Start and slut messages i.e. whenever the team is empty
     df = df[df["Lag"].notna()]
 
-    print(df.head())
     return df
 
-def merge_pdf_tables_to_df(pdf_path: str) -> pd.DataFrame:
+def extract_tables_from_pdf(pdf_path: str) -> pd.DataFrame:
     """
-    Extracts match event data from a handball match PDF and returns a pandas DataFrame.
+    Alternative method to extract tables using tabula-py.
     """
+    starter_df = pd.DataFrame()
+    table_df = pd.DataFrame()
+    exprected_line_nr=1
 
+    with pdfplumber.open(pdf_path) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text()
+            #print(text)
 
-    # Read the PDF
-    tables = camelot.read_pdf(pdf_path, pages='all', flavor='stream')
+            # iterate over all lines in text
+            for line in text.split('\n'):
+                if line[0].isdigit():
+                    line_nr = re.findall(r"^\d{1,3}", line)[0]
+                    #print(f"line_nr: {line_nr}, exprected_line_nr: {exprected_line_nr}")
+                    assert line_nr is not None
+                    assert int(line_nr) == int(exprected_line_nr)
+                    exprected_line_nr += 1
+                    try:
+                        full_pattern = r"\d{1,3} (\d{1,2}:\d{1,2}) (\d{1,2}-\d{1,2})?(.*)(Mål|Utvisning|Tilldömd|7-m miss|Direkt rött kort|Mål 7-m) (\d{1,2}) (.*)"
+                        matches = re.findall(full_pattern, line)
+                        if "Spelare aktiverad" in line and "0:00" in line:
+                            pattern = r"\d{1,2}\s0:00\s(.*)\sSpelare\saktiverad(\s\d{1,2})\s(.*)"
+                            match = re.search(pattern, line)
+                            new_row = {'Lag': match.group(1), 'Nr': match.group(2), 'Spelare': match.group(3)}
+                            starter_df = pd.concat([starter_df, pd.DataFrame([new_row])], ignore_index=True)
 
-    dfs = []
-    for i, table in enumerate(tables):
-        df = table.df.copy()
+                        if matches and len(matches)==1:
+                            match = matches[0]
+                            new_row = {
+                                'Tid': match[0], 
+                                'Mål': match[1].strip() if match[2] else "", 
+                                'Lag': match[2].strip(), 
+                                'Händelse': match[3].strip(), 
+                                'Nr': match[4].strip(), 
+                                'Spelare': match[5].strip()
+                                }
+                            table_df = pd.concat([table_df, pd.DataFrame([new_row])], ignore_index=True)
+                    except Exception as e:
+                        print(f"Error processing line in file {pdf_path}: {line}. Error: {e}")
+                        continue
 
-        # Drop completely empty columns
-        df = df.dropna(axis=1, how='all')
-        
-        # Remove first row/column for first table
-        df = df.iloc[1:, 1:]
-        df.reset_index(drop=True, inplace=True)
-
-        if df.columns.size == 5:
-            df.insert(
-                loc=1,
-                column="score",
-                value=df.iloc[:, 1].str.extract(r"(\d{1,2}-\d{1,2})")[0]
-            )
-            df.iloc[:, 2] = df.iloc[:, 2].str.replace(r"\d{1,2}-\d{1,2}", "", regex=True).str.strip()
-        df.columns = ["Tid", "Mål", "Lag", "Händelse", "Nr", "Spelare"]
-        dfs.append(df)
-    # Combine all tables
-    df_combined = pd.concat(dfs, ignore_index=True)
-
-    starters = df_combined.query('Händelse == "Spelare aktiverad" and Tid == "0:00"')
-    print(clean_df(df_combined))
-
+        clean = clean_df(table_df)
+        return clean, starter_df      
+                    
 if __name__ == "__main__":
     protocol_files = [os.path.join("./data/protocols/shf_a", f) for f in os.listdir("./data/protocols/shf_a") if f.endswith(".pdf")]
-    df_shf_a = merge_pdf_tables_to_df(protocol_files[0])  # Assuming we're processing the first file
+    for protocol_file in protocol_files:
+        df, starter_df = extract_tables_from_pdf(protocol_file)
+        output_csv_path = Path(protocol_file.replace(".pdf", ".csv").replace("protocols", "tabular_data"))
+        output_csv_path.parent.mkdir(parents=True, exist_ok=True)
+        save_df_to_csv(df, output_csv_path)
