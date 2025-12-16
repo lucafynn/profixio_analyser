@@ -2,7 +2,6 @@ import pdfplumber
 import pandas as pd
 import re
 import os
-import camelot, tabula
 import numpy as np
 from pathlib import Path
 
@@ -13,7 +12,7 @@ def assert_correct_table_structure(df: pd.DataFrame):
 def save_df_to_csv(df: pd.DataFrame, output_path: str):
     df.to_csv(output_path, index=False)
 
-def clean_df(df: pd.DataFrame) -> pd.DataFrame:
+def clean_shf_a_protocol(df: pd.DataFrame) -> pd.DataFrame:
     """
     Cleans and standardizes the extracted DataFrame from the PDF.
     """
@@ -28,7 +27,7 @@ def clean_df(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-def extract_tables_from_pdf(pdf_path: str) -> pd.DataFrame:
+def extract_tables_from_shf_a(pdf_path: str) -> pd.DataFrame:
     """
     Alternative method to extract tables using tabula-py.
     """
@@ -53,6 +52,7 @@ def extract_tables_from_pdf(pdf_path: str) -> pd.DataFrame:
                         full_pattern = r"\d{1,3} (\d{1,2}:\d{1,2}) (\d{1,2}-\d{1,2})?(.*)(Mål|Utvisning|Tilldömd|7-m miss|Direkt rött kort|Mål 7-m) (\d{1,2}) (.*)"
                         matches = re.findall(full_pattern, line)
                         if "Spelare aktiverad" in line and "0:00" in line:
+                            #TODO: rewrite this
                             pattern = r"\d{1,2}\s0:00\s(.*)\sSpelare\saktiverad(\s\d{1,2})\s(.*)"
                             match = re.search(pattern, line)
                             new_row = {'Lag': match.group(1), 'Nr': match.group(2), 'Spelare': match.group(3)}
@@ -73,13 +73,13 @@ def extract_tables_from_pdf(pdf_path: str) -> pd.DataFrame:
                         print(f"Error processing line in file {pdf_path}: {line}. Error: {e}")
                         continue
 
-        clean = clean_df(table_df)
+        clean = clean_shf_a_protocol(table_df)
         return clean, starter_df      
                     
 if __name__ == "__main__":
     protocol_files = [os.path.join("./data/protocols/shf_a", f) for f in os.listdir("./data/protocols/shf_a") if f.endswith(".pdf")]
     for protocol_file in protocol_files:
-        df, starter_df = extract_tables_from_pdf(protocol_file)
+        df, starter_df = extract_tables_from_shf_a(protocol_file)
         output_csv_path = Path(protocol_file.replace(".pdf", ".csv").replace("protocols", "tabular_data"))
         output_csv_path.parent.mkdir(parents=True, exist_ok=True)
         save_df_to_csv(df, output_csv_path)
