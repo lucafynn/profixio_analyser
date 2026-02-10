@@ -1,3 +1,4 @@
+from pathlib import Path
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 import re
@@ -30,7 +31,9 @@ def get_protocol_links(url, save=False) -> list[str]:
         time.sleep(2)
     driver.quit()
     if save:
-        with open("/data/match_ids.txt", "w") as f:
+        path = Path("./data/protocols/match_ids.txt")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open("./data/protocols/match_ids.txt", "w") as f:
             for mid in match_ids:
                 f.write(f"{mid}\n")
     return list(match_ids)
