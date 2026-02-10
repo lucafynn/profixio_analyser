@@ -13,10 +13,8 @@ def assert_correct_table_structure(df: pd.DataFrame):
     # TODO: implement
     pass
 
-
 def save_df_to_csv(df: pd.DataFrame, output_path: str):
-    df.to_csv(output_path, index=False)
-
+    df.to_csv(output_path, index=False, encoding="utf-8")
 
 def match_team(lag, home, away, threshold=50):
     if pd.isna(lag):
@@ -31,7 +29,7 @@ def match_team(lag, home, away, threshold=50):
     best_score = scores[best_team]
 
     if best_score < threshold:
-        msg = f"No close match between {lag} and {best_team} with score {round(best_score,2)}"
+        msg = f"\nLoose match between {lag} and {best_team} with score {round(best_score,2)}"
         if msg not in PRINTED_WARNINGS:
             print(msg)
             PRINTED_WARNINGS.add(msg)
@@ -147,19 +145,17 @@ def extract_information(pdf_path: str) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    protocol_files = [
-        os.path.join("./data/protocols/shf_a", f)
-        for f in os.listdir("./data/protocols/shf_a")
-        if f.endswith(".pdf")
-    ]
+    protocol_dir = Path("./data/protocols/shf_a")
+    output_base_dir = Path("./data/tabular_data")
+    output_base_dir.mkdir(parents=True, exist_ok=True)
+ 
+    protocol_files = list(protocol_dir.glob("*.pdf"))
     full_meta_info = []
     for protocol_file in protocol_files:
-        df, meta_info = extract_information(protocol_file)
+        df, meta_info = extract_information(str(protocol_file))
         full_meta_info.append(meta_info)
 
-        output_csv_path = Path(
-            protocol_file.replace(".pdf", ".csv").replace("protocols", "tabular_data")
-        )
+        output_csv_path = output_base_dir / (protocol_file.stem + ".csv")
         output_csv_path.parent.mkdir(parents=True, exist_ok=True)
         save_df_to_csv(df, output_csv_path)
     meta_info_df = pd.DataFrame(full_meta_info, columns=full_meta_info[0].keys())
